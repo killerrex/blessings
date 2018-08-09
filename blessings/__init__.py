@@ -169,6 +169,60 @@ class Terminal(object):
         setattr(self, attr, resolution)  # Cache capability codes.
         return resolution
 
+    def __format__(self, format_spec):
+        """
+        Respond to a formatting mini language so it is possible to
+        code in a compact form the styles.
+        The default format is return to normal.
+
+        A common usage can be::
+
+            t = Terminal()
+            print("{t:gob}Green on blue background?{t:n}".format(t=t)
+
+        Any input accepted by __getattr__ is recognised, so it is also
+        useful to create compact expressions::
+
+            emp = 'red_on_bright_yellow'
+            ...
+            print('{t:{emp}}Emphasis This!{t:normal}'.format(t=t, emp=emp))
+
+        Notice that it is easy to abuse of this syntax and produce cryptic
+        format codes like::
+
+            print(
+                '{t:igo+m}Try to {t:u!i*r}read{t:i+g} this{t:n}'.format(t=t)
+            )
+
+        The intended usage is much user friendly to read::
+
+            print(
+                '{t:goc}Mark {t:u}this{t:!u} easily{t:n}'.format(t=t)
+            )
+
+        See ``split_format_code`` for the valid codes.
+        """
+        if not self.does_styling:
+            return NullCallableString()
+
+        # The default code reset everything to normal
+        if not format_spec:
+            format_spec = 'normal'
+
+        if format_spec == 'normal':
+            return self.normal
+
+        # Skip first single word codes like 'red' or 'no_italic'
+        # Notice that it is not possible to build a capability name
+        # with the set of codes
+        if format_spec in COMPOUNDABLES or '_' in format_spec:
+            return self._resolve_formatter(format_spec)
+
+        formatters = split_format_code(format_spec)
+
+        return self._formatting_string(
+            u''.join(self._resolve_formatter(s) for s in formatters))
+
     @property
     def does_styling(self):
         """Whether attempt to emit capabilities
@@ -554,3 +608,124 @@ def split_into_formatters(compound):
         else:
             merged_segs.append(s)
     return merged_segs
+
+
+def split_format_code(format_spec):
+    """Expand a string for the format command in the formatters names.
+
+    The recognised codes are single-letter marks, with the colors
+    based in the traditional matplotlib colors letters:
+
+        ====  =======
+        Code   Color
+        ====  =======
+           k    Black
+           r      Red
+           g    Green
+           y   Yellow
+           b     Blue
+           m  Magenta
+           c     Cyan
+           w    White
+        ====  =======
+
+    To create the bright version of the colors, prepend a '+',
+    so '+b' is 'bright_blue'.
+
+    To create the 'on_' version prepend a 'o', so 'ob' is 'on_blue'
+    and o+b is on bright blue.
+    The +ob code is also accepted as 'on_bright_blue'.
+
+    The capabilities are coded:
+
+        ====  ===========
+        Code   Capability
+        ====  ===========
+          \*         Bold
+           ^      Reverse
+           u    Underline
+           B        Blink
+           n       Normal
+           D          Dim
+           i       Italic
+           =       Shadow
+          \-     Standout
+           s    Subscript
+           S  Superscript
+           F        Flash
+        ====  ===========
+
+    To include the negated capability prepend !, so !u is no_underline.
+    Notice that this can produce non-existing codes like !b.
+
+    >>> split_format_code('uro+y!i')
+    ['underline', 'red', 'on_bright_yellow', 'no_italic']
+    """
+    colors = {
+        'k': 'black', 'r': 'red',  'g': 'green', 'y': 'yellow',
+        'b': 'blue', 'm': 'magenta', 'c': 'cyan', 'w': 'white'
+    }
+
+    codes = {
+        '*': 'bold',
+        '^': 'reverse',
+        'u': 'underline',
+        'B': 'blink',
+        'n': 'normal',
+        'D': 'dim',
+        'i': 'italic',
+        '=': 'shadow',
+        '-': 'standout',
+        's': 'subscript',
+        'S': 'superscript',
+        'F': 'Flash'
+    }
+
+    formatters = []
+    negated = False
+    bright = False
+    background = False
+    for c in format_spec:
+        if c == '!':
+            negated = True
+
+        elif c == '+':
+            bright = True
+
+        elif c == 'o':
+            background = True
+
+        elif c in colors:
+            if negated:
+                raise TypeError(
+                    'Negated color in format {}'.format(format_spec)
+                )
+            if background:
+                s = 'on_'
+            else:
+                s = ''
+
+            if bright:
+                s += 'bright_'
+
+            s += colors[c]
+            formatters.append(s)
+            background = False
+            bright = False
+
+        elif c in codes:
+            if bright or background:
+                raise TypeError(
+                    'Invalid capability in {}'.format(format_spec)
+                )
+
+            if negated:
+                s = 'no_' + codes[c]
+            else:
+                s = codes[c]
+            formatters.append(s)
+            negated = False
+
+        else:
+            raise TypeError('Invalid char in {}'.format(format_spec))
+    return formatters

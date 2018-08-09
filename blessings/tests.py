@@ -223,6 +223,33 @@ def test_formatting_functions_without_tty():
     eq_(t.on_bright_red_bold_bright_green_underline('meh'), u'meh')
 
 
+def test_format_command():
+    """Test the format command, even with some cryptic codes"""
+    t = TestTerminal()
+    # By now, it should be safe to use sugared attributes. Other tests test
+    # those.
+    eq_(u'{t:bold}hi{t:normal}'.format(t=t), t.bold + u'hi' + t.normal)
+    # Test some non-ASCII chars, probably not necessary:
+    eq_(u'{t:*g}boö{t:n}'.format(t=t), t.bold + t.green + u'boö' + t.normal)
+    eq_('{t:*ugor}boo{t}'.format(t=t),
+        t.bold + t.underline + t.green + t.on_red + u'boo' + t.normal)
+    # Don't spell things like this:
+    eq_('{t:o+r*+gu}meh{t:n}'.format(t=t),
+        t.on_bright_red + t.bold + t.bright_green + t.underline + u'meh' +
+                          t.normal)
+
+
+def test_format_command_without_tty():
+    """Test the format command even when there's no tty."""
+    t = TestTerminal(stream=StringIO())
+    eq_(u'{t:bold}hi{t:normal}'.format(t=t), u'hi')
+    eq_(u'{t:g}hi{t:n}'.format(t=t), u'hi')
+    # Test non-ASCII chars, no longer really necessary:
+    eq_(u'{t:*g}boö{t}'.format(t=t), u'boö')
+    eq_(u'{t:*ugor}loo{t}'.format(t=t), u'loo')
+    eq_(u'{t.o+r*+gu}meh{t}'.format(t=t), u'meh')
+
+
 def test_nice_formatting_errors():
     """Make sure you get nice hints if you misspell a formatting wrapper."""
     t = TestTerminal()
